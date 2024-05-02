@@ -1,3 +1,4 @@
-from .docker_manager import docker_manager
+from .docker_manager import DockerManager
+from .cloudwatch_manager import CloudWatchManager
 
-__all__ = ["docker_manager"]
+__all__ = ["DockerManager", "CloudWatchManager"]

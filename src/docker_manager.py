@@ -1,57 +1,68 @@
 import logging
 
 import docker
-from docker.errors import ContainerError, ImageNotFound, APIError, DockerException
+from docker.errors import (
+    ContainerError,
+    ImageNotFound,
+    APIError,
+    NotFound,
+    DockerException,
+)
+from docker.models.containers import Container
 
 import config
-
-# todo: add black isort mypy
 
 logger = logging.getLogger(__name__)
 
 
 class DockerManager:
-    def __init__(self, **kwargs):
-        self.client = docker.DockerClient(base_url=config.DOCKER_HOST)
+    def __init__(self, **kwargs) -> None:
+        self.client = docker.DockerClient(base_url=config.DOCKER_HOST, **kwargs)
+        self._container: Container | None = None
 
-    def run_container(self, image: str, command: str | list[str]) -> None:
+    def run_container(self, image: str, command: str | list[str], **kwargs) -> None:
         """
-        Запускает Docker контейнер с указанным образом и командой.
-        Возвращает логи выполнения команды в контейнере.
+        Starts Docker container.
         """
         try:
-            container = self.client.containers.run(image, command, detach=True)
-            logs = container.logs(stream=True)
-            return logs
+            self._container = self.client.containers.run(image, command, detach=True, **kwargs)
         except ImageNotFound:
-            print("Ошибка: Указанный образ не найден.")
+            logger.error("The specified image was not found or there are insufficient permissions.")
         except ContainerError as e:
-            print(f"Ошибка выполнения команды в контейнере: {e}")
+            logger.error(f"Error while executing command in container: {e}")
         except APIError as e:
-            print(f"Ошибка API Docker: {e}")
+            logger.error(f"API Docker Error: {e}")
 
-    def stop_container(self, container_id):
+    def get_logs(self):
         """
-        Останавливает контейнер по указанному ID.
+        Retrieves logs from the Docker container, if available.
+        """
+        if self._container:
+            try:
+                return self._container.logs(stream=True)
+            except NotFound:
+                logger.error("Error: The container has been removed or does not exist.")
+            except DockerException as e:
+                logger.error(f"Error retrieving logs: {e}")
+        else:
+            logger.error("No container is currently running.")
+
+    def stop_container(self) -> None:
+        """
+        Stopping container.
         """
         try:
-            container = self.client.containers.get(container_id)
-            container.stop()
+            if self._container:
+                self._container.stop()
         except APIError as e:
-            print(f"Ошибка API Docker при остановке контейнера: {e}")
+            logger.error(f"API Docker Error while stopping container: {e}")
 
-    def remove_container(self, container_id):
+    def remove_container(self) -> None:
         """
-        Удаляет контейнер по указанному ID.
+        Deleting container.
         """
         try:
-            container = self.client.containers.get(container_id)
-            container.remove()
+            if self._container:
+                self._container.remove()
         except APIError as e:
-            print(f"Ошибка API Docker при удалении контейнера: {e}")
-
-
-docker_manager = DockerManager()
-# todo проверить что енвы успевают подгрузиться
-# todo что если нет имаджа
-
+            logger.error(f"API Docker Error while deleting container: {e}")
